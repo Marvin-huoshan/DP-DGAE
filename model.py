@@ -26,9 +26,11 @@ class VGAE(nn.Module):
 		#方差
 		self.logstd = self.gcn_logstddev(hidden)
 		#从标准正态分布抽取随机值，为一个[n x hidden2_dim]矩阵赋值
-		gaussian_noise = torch.randn(X.size(0), args.hidden2_dim)
+		#gaussian_noise = torch.randn(X.size(0), args.hidden2_dim)
+		laplace = torch.distributions.laplace.Laplace(torch.tensor(0.0), torch.tensor(1.0))
+		laplace_noise = laplace.sample([X.size(0),args.hidden2_dim])
 		#[n x 16] * e^logstd(n x 16) + mean(n x 16)  	*点乘
-		sampled_z = gaussian_noise*torch.exp(self.logstd) + self.mean
+		sampled_z = laplace_noise*torch.exp(self.logstd) + self.mean
 		return sampled_z
 	#X->传入特征矩阵
 	def forward(self, X):
