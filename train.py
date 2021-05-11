@@ -200,9 +200,9 @@ print(model.Z)
 Z = model.Z
 print(torch.matmul(Z, Z.t()))
 print(A_pred)
-import pandas as pd
+'''import pandas as pd
 signumpy = A_pred.detach().numpy()
 data_df = pd.DataFrame(signumpy)
 writer = pd.ExcelWriter('save_Excel_VGAE_laplace.xlsx')
 data_df.to_excel(writer,'page_1',float_format='%.5f') # float_format 控制精度
-writer.save()
+writer.save()'''
