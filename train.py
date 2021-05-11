@@ -173,7 +173,8 @@ for epoch in range(args.num_epoch):
         #mean->[n x 16]
         #sum(1)->按行相加
         #[n x 16]-> [n x 1] -> mean
-        kl_divergence = 0.5/ A_pred.size(0) * (1 + 2*model.logstd - model.mean**2 - torch.exp(model.logstd)**2).sum(1).mean()
+        #kl_divergence = 0.5/ A_pred.size(0) * (1 + 2*model.logstd - model.mean**2 - torch.exp(model.logstd)**2).sum(1).mean()
+        kl_divergence = 1 / A_pred.size(0) * (1 + model.logstd - torch.abs(model.mean) - torch.exp(model.logstd)).sum(1).mean()
         loss -= kl_divergence
     #误差反向传播
     loss.backward()
@@ -181,10 +182,6 @@ for epoch in range(args.num_epoch):
     optimizer.step()
     #计算ACC
     train_acc = get_acc(A_pred,adj_label)
-    print(model.Z)
-    Z = model.Z
-    print(torch.matmul(Z, Z.t()))
-    print(A_pred)
     #validation_edges and validation_edges_false vs A_pred
     #在训练过程中使用validation; validation的主要作用是来验证是否过拟合、以及用来调节训练参数等
     #边训练边看到训练的结果，及时判断学习状态
@@ -198,3 +195,14 @@ for epoch in range(args.num_epoch):
 test_roc, test_ap = get_scores(test_edges, test_edges_false, A_pred)
 print("End of training!", "test_roc=", "{:.5f}".format(test_roc),
       "test_ap=", "{:.5f}".format(test_ap))
+
+print(model.Z)
+Z = model.Z
+print(torch.matmul(Z, Z.t()))
+print(A_pred)
+import pandas as pd
+signumpy = A_pred.detach().numpy()
+data_df = pd.DataFrame(signumpy)
+writer = pd.ExcelWriter('save_Excel_VGAE_laplace.xlsx')
+data_df.to_excel(writer,'page_1',float_format='%.5f') # float_format 控制精度
+writer.save()
