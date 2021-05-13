@@ -198,11 +198,13 @@ print("End of training!", "test_roc=", "{:.5f}".format(test_roc),
 
 print(model.Z)
 Z = model.Z
-print(torch.matmul(Z, Z.t()))
+ZZT = torch.matmul(Z, Z.t())
 print(A_pred)
-'''import pandas as pd
-signumpy = A_pred.detach().numpy()
+print(model.logstd)
+print(model.mean)
+import pandas as pd
+signumpy = ZZT.detach().numpy()
 data_df = pd.DataFrame(signumpy)
-writer = pd.ExcelWriter('save_Excel_VGAE_laplace.xlsx')
+writer = pd.ExcelWriter('save_Excel_VGAE_laplace_origin.xlsx')
 data_df.to_excel(writer,'page_1',float_format='%.5f') # float_format 控制精度
-writer.save()'''
+writer.save()
