@@ -89,6 +89,10 @@ class GAE(nn.Module):
 		self.base_gcn = GraphConvSparse(args.input_dim, args.hidden1_dim, adj)
 		#gcn_mean = GraphConvSparse(32,16,adj)
 		self.gcn_mean = GraphConvSparse(args.hidden1_dim, args.hidden2_dim, adj, activation=lambda x:x)
+		#gcn_out = GraphConvSparse(16,1443,adj)
+		#使用GCN作为解码器
+		self.gcn_out = GraphConvSparse(args.hidden2_dim, args.num, adj, activation=torch.sigmoid)
+
 
 	def encode(self, X):
 		#hidden = base_gcn.forward(X)
@@ -98,13 +102,18 @@ class GAE(nn.Module):
 		#z的维度为n x hidden2_dim
 		z = self.mean = self.gcn_mean(hidden)
 		return z
+
+	def decode(self, X):
+		A_P = self.gcn_out(X)
+		return A_P
 	#前向传播
 	def forward(self, X):
 		#通过encode获得隐变量Z
 		Z = self.encode(X)
 		#使用Z*Z.T乘积解码
 		#A_pred 为一个n x n矩阵
-		A_pred = dot_product_decode(Z)
+		#A_pred = dot_product_decode(Z)
+		A_pred = self.decode(Z)
 		#返回预测矩阵
 		return A_pred
 		
