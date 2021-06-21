@@ -8,5 +8,5 @@ hidden1_dim = 100
 hidden2_dim = 50
 use_feature = True
 
-num_epoch = 200
+num_epoch = 150
 learning_rate = 0.01

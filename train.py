@@ -196,7 +196,7 @@ test_roc, test_ap = get_scores(test_edges, test_edges_false, A_pred)
 print("End of training!", "test_roc=", "{:.5f}".format(test_roc),
       "test_ap=", "{:.5f}".format(test_ap))
 
-print(model.Z)
+'''print(model.Z)
 Z = model.Z
 ZZT = torch.matmul(Z, Z.t())
 print(A_pred)
@@ -207,4 +207,4 @@ signumpy = ZZT.detach().numpy()
 data_df = pd.DataFrame(signumpy)
 writer = pd.ExcelWriter('save_Excel_VGAE_laplace_origin.xlsx')
 data_df.to_excel(writer,'page_1',float_format='%.5f') # float_format 控制精度
-writer.save()
+writer.save()'''

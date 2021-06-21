@@ -60,6 +60,16 @@ class GraphConvSparse(nn.Module):
 		outputs = self.activation(x)
 		return outputs
 
+	def dforward(self, inputs):
+		x = inputs
+		# feature * weight.T
+		x = torch.mm(x,self.weight.T)
+		# A * feature * weight.T
+		x = torch.mm(self.adj, x)
+		#outputs = relu(A * feature * weight)
+		outputs = self.activation(x)
+		return outputs
+
 #乘积解码
 def dot_product_decode(Z):
 	#torch.matmul高维数据矩阵乘
@@ -86,12 +96,13 @@ class GAE(nn.Module):
 	def __init__(self,adj):
 		super(GAE,self).__init__()
 		#base_gcn = GraphConvSparse(1433,32,adj)
-		self.base_gcn = GraphConvSparse(args.input_dim, args.hidden1_dim, adj)
+		self.base_gcn = GraphConvSparse(args.input_dim, args.hidden1_dim, adj, activation=lambda x:x)
 		#gcn_mean = GraphConvSparse(32,16,adj)
 		self.gcn_mean = GraphConvSparse(args.hidden1_dim, args.hidden2_dim, adj, activation=lambda x:x)
-		#gcn_out = GraphConvSparse(16,1443,adj)
+		self.gcn_out = GraphConvSparse(args.input_dim,args.num,adj, activation=torch.sigmoid)
 		#使用GCN作为解码器
-		self.gcn_out = GraphConvSparse(args.hidden2_dim, args.num, adj, activation=torch.sigmoid)
+		#self.gcn_meanT = GraphConvSparse(args.hidden2_dim, args.hidden1_dim, adj, activation=torch.sigmoid)
+		#self.base_gcnT = GraphConvSparse(args.hidden1_dim)
 
 
 	def encode(self, X):
@@ -104,7 +115,9 @@ class GAE(nn.Module):
 		return z
 
 	def decode(self, X):
-		A_P = self.gcn_out(X)
+		A_P = self.gcn_mean.dforward(X)
+		A_P = self.base_gcn.dforward(A_P)
+		A_P = self.gcn_out(A_P)
 		return A_P
 	#前向传播
 	def forward(self, X):
