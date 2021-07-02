@@ -33,7 +33,8 @@ class GraphConvSparse(nn.Module):
         # A * feature * weight.T
         x = torch.mm(self.adj, x)
         # outputs = relu(A * feature * weight)
-        outputs = self.activation(x)
+        #outputs = self.activation(x)
+        outputs = x
         return outputs
 
 def glorot_init(input_dim, output_dim):
@@ -52,7 +53,7 @@ class GAE(nn.Module):
         # base_gcn = GraphConvSparse(1433,32,adj)
         self.base_gcn = GraphConvSparse(pre_args.input_dim, pre_args.hidden1_dim, adj, activation=torch.sigmoid)
         # gcn_mean = GraphConvSparse(32,16,adj)
-        self.gcn_mean = GraphConvSparse(pre_args.hidden1_dim, pre_args.hidden2_dim, adj, activation=lambda x: x)
+        self.gcn_mean = GraphConvSparse(pre_args.hidden1_dim, pre_args.hidden2_dim, adj, activation=torch.sigmoid)
         self.gcn_out = GraphConvSparse(pre_args.input_dim, pre_args.num, adj, activation=torch.sigmoid)
 
     # 使用GCN作为解码器
@@ -64,6 +65,7 @@ class GAE(nn.Module):
         # hidden = relu(A * feature * weight<正态>)
         # hidden维度为：n x D
         hidden = self.base_gcn(X)
+        #hidden = self.gcn_mean(X)
         # z的维度为n x hidden2_dim
         #z = self.mean = self.gcn_mean(hidden)
         return hidden
@@ -73,12 +75,16 @@ class GAE(nn.Module):
         A_P = self.base_gcn.dforward(A_P)
         A_P = self.gcn_out(A_P)'''
         A_P = self.base_gcn.dforward(X)
+        #A_P = self.gcn_mean.dforward(X)
         return A_P
 
     # 前向传播
     def forward(self, X):
         # 通过encode获得隐变量Z
+        #print(X)
         Z = self.encode(X)
+        #print(Z)
+        self.hidden = Z
         # 使用Z*Z.T乘积解码
         # A_pred 为一个n x n矩阵
         # A_pred = dot_product_decode(Z)

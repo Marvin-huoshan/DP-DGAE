@@ -1,3 +1,6 @@
+import pickle
+
+import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
 from torch.optim import Adam
@@ -6,16 +9,17 @@ import scipy.sparse as sp
 import numpy as np
 import os
 import time
-
+from torch.optim import lr_scheduler
 from input_data import load_data
 from preprocessing import *
 import pre_args
 import pre_model
+import AP_loss
 
 
 # Train on CPU (hide GPU) due to memory constraints
 #由于内存限制，使用CPU进行训练
-os.environ['CUDA_VISIBLE_DEVICES'] = ""
+os.environ['CUDA_VISIBLE_DEVICES'] = "0,1"
 
 #获得数据集的邻接矩阵与特征矩阵
 adj, features = load_data(pre_args.dataset)
@@ -94,9 +98,14 @@ weight_tensor[weight_mask] = pos_weight
 # init model and optimizer
 #getattr() 函数用于返回一个对象属性值。
 #model.GAE(adj_norm)
+print(torch.cuda.is_available())
+adj_norm = adj_norm.cuda()
 model = getattr(pre_model,pre_args.model)(adj_norm)
+model = model.cuda()
+
 #使用Adam优化器，参数为model.parammeters(),learning_rate
 optimizer = Adam(model.parameters(), lr=pre_args.learning_rate)
+scheduler1 = lr_scheduler.StepLR(optimizer,step_size=10000,gamma=0.5)
 
 #validation_edges and validation_edges_false vs A_pred
 def get_scores(edges_pos, edges_neg, adj_rec):
@@ -145,28 +154,105 @@ def get_acc(adj_rec, feature_label):
     #adj_rec->预测矩阵；adj_label-> (A + I)
     #变为1维
     #为何用long
-    labels_all = feature_label.to_dense().view(-1).long()
+    #labels_all = feature_label.to_dense().view(-1).long()
+    #feature_label = torch_2(feature_label)
+    #adj_rec = torch_2(adj_rec)
+    #labels_all = feature_label.view(-1).long()
+    labels_all = (feature_label > 0.7).view(-1).long()
+    #labels_all = feature_label.view(-1).long()
     #预测矩阵大于0.5的边置为1，小于0.5为0
-    preds_all = (adj_rec > 0.5).view(-1).long()
+    preds_all = (adj_rec > 0.7).view(-1).long()
+    #preds_all = adj_rec.view(-1).long()
     #对应为值相等的数量之和/所有的边数
     #只是有矩阵，并未成图？
     accuracy = (preds_all == labels_all).sum().float() / labels_all.size(0)
     return accuracy
 
+def torch_2(features):
+    '''
+    feature Retain two decimal places
+    :param features:
+    :return:
+    '''
+    features = features * 10
+    frac = torch.frac(features)
+    frac_round = torch.round(frac)
+    features = torch.trunc(features)
+    features = features + frac_round
+    features = features / 10
+    return features
+
+#with open('pre_weight/hidden_1.pk','rb') as file_to_read:
+    #features = pickle.load(file_to_read)
+
+#features = features.clone().detach()
+
+#Laplace noise
+noise = torch.distributions.Laplace(
+    torch.tensor([0.0]),
+    torch.tensor([pre_args.delta_1/pre_args.epsilon]),
+)
+noise3 = torch.distributions.Laplace(
+    torch.tensor([1.0]),
+    torch.tensor([pre_args.delta_1/pre_args.epsilon]),
+)
+features_tensor = features.to_dense().view(-1)
+'''sample1 = noise.sample(sample_shape=features_tensor.shape)
+sample1 = torch.reshape(sample1,features_tensor.shape)'''
+sample1 = torch.full(features_tensor.shape,-1.0)
+while torch.mean(sample1) < 0:
+    sample1 = noise.sample(sample_shape=features_tensor.shape)
+    sample1 = torch.reshape(sample1,features_tensor.shape)
+    print(torch.mean(sample1))
+#noise2
+'''sample2 = noise.sample(sample_shape=features_tensor.shape)
+sample2 = torch.reshape(sample2,features_tensor.shape)'''
+sample2 = torch.full(features_tensor.shape,-1.0)
+while torch.mean(sample2) < 0:
+    sample2 = noise.sample(sample_shape=features_tensor.shape)
+    sample2 = torch.reshape(sample2,features_tensor.shape)
+    print(torch.mean(sample2))
+#noise3
+'''sample3 = noise.sample(sample_shape=features_tensor.shape)
+sample3 = torch.reshape(sample3,features_tensor.shape)'''
+sample3 = torch.full(features_tensor.shape,-1.0)
+while torch.mean(sample3) < 0:
+    sample3 = noise3.sample(sample_shape=features_tensor.shape)
+    sample3 = torch.reshape(sample3,features_tensor.shape)
+    print(torch.mean(sample3))
+print(torch.mean(sample1))
+print(torch.mean(sample2))
+print(torch.mean(sample3))
+print('sample3:',torch.max(sample3),torch.min(sample3))
+sample1 = sample1.cuda()
+sample2 = sample2.cuda()
+sample3 = sample3.cuda()
+Loss = AP_loss.GAE_Loss()
+Loss = Loss.cuda()
+#print(sample1)
 # train model
 #开始训练
+features = data_normal_2d(features.to_dense())
+#features = features.to_dense()
+features = features.cuda()
+acc_history = []
 for epoch in range(pre_args.num_epoch):
     t = time.time()
     #feature -> 稀疏张量，张量形式的特征矩阵
     #A_pred = model.forward(features)
-    #通过解码器获得的预测矩阵
     A_pred = model(features)
+    #print(A_pred)
+    #print(features)
+    #print(A_pred)
+    #print(features)
     #梯度清零
     optimizer.zero_grad()
     #norm = (n * n) / [(n * n - num(edges)) * 2]
     #使用交叉熵->F.binary_cross_entropy([预测值的预测一维表示]，[A+I的一维表示])
     #在原本有边的地方，设置更高的权重（>1），原本无边的地方设置权重为1,更加注重对于原始边的学习
-    loss = log_lik = norm*F.binary_cross_entropy(A_pred.view(-1), features.to_dense().view(-1))
+    #loss = log_lik = F.binary_cross_entropy(A_pred.view(-1), features.to_dense().view(-1))
+    loss = log_lik = Loss(A_pred.view(-1),features.view(-1),sample1,sample2,sample3)
+    #loss = log_lik = F.binary_cross_entropy(A_pred.view(-1), features.view(-1))
     if pre_args.model == 'VGAE':
         #kl_divergence = 1/2n * (1 + 2*logstd - mean^2 - [e^logstd]^2)
         #logstd->[n x 16]
@@ -177,11 +263,15 @@ for epoch in range(pre_args.num_epoch):
         kl_divergence = 1 / A_pred.size(0) * (1 + model.logstd - torch.abs(model.mean) - torch.exp(model.logstd)).sum(1).mean()
         loss -= kl_divergence
     #误差反向传播
+    #print(model.base_gcn.weight)
     loss.backward()
     #梯度下降
     optimizer.step()
+    print('epoch %d learning rate: %f' %(epoch,optimizer.param_groups[0]['lr']))
+    scheduler1.step()
     #计算ACC
     train_acc = get_acc(A_pred,features)
+    acc_history.append(train_acc.item())
     #validation_edges and validation_edges_false vs A_pred
     #在训练过程中使用validation; validation的主要作用是来验证是否过拟合、以及用来调节训练参数等
     #边训练边看到训练的结果，及时判断学习状态
@@ -191,12 +281,35 @@ for epoch in range(pre_args.num_epoch):
           "train_acc=", "{:.5f}".format(train_acc), "val_roc=", "{:.5f}".format(val_roc),
           "val_ap=", "{:.5f}".format(val_ap),
           "time=", "{:.5f}".format(time.time() - t))
-
+torch.save(obj=model.base_gcn.weight, f = 'pre_weight/base_gcn_noise.pth')
+with open('pre_weight/hidden_1_noise.pk','wb') as file_to_write:
+    pickle.dump(model.hidden,file_to_write)
 
 #test_roc, test_ap = get_scores(test_edges, test_edges_false, A_pred)
 #print("End of training!", "test_roc=", "{:.5f}".format(test_roc),
       #"test_ap=", "{:.5f}".format(test_ap))
+torch.cuda.empty_cache()
 
+def plot_loss_with_acc(loss_history,Floss_history,Loss_history,acc_history):
+    fig = plt.figure(figsize=(18, 10))
+    ax1 = fig.add_subplot(121)
+    plot1 = plt.plot(range(len(loss_history)),loss_history,c = 'b',label = 'AP_loss')
+    plot2 = plt.plot(range(len(Floss_history)),Floss_history,c = 'r',label = 'F_loss')
+    plot3 = plt.plot(range(len(Loss_history)),Loss_history,c = 'g',label = 'Loss')
+    ax1.legend(fontsize = 'large', loc = 'lower left')
+    ax1.set_title('different loss')
+    ax1.set_xlabel('epoch')
+    ax1.set_ylabel('loss')
+    ax2 = plt.subplot(122)
+    plot4 = plt.plot(range(len(acc_history)),acc_history,c = 'y',label = 'ACC')
+    ax2.set_title('ACC')
+    ax2.set_xlabel('epoch')
+    ax2.set_ylabel('ACC')
+    ax2.legend(fontsize = 'large', loc = 'upper right')
+    plt.savefig('Loss_&_ACC.png')
+
+
+plot_loss_with_acc(AP_loss.loss_history,AP_loss.Floss_history,AP_loss.Loss_history,acc_history)
 '''print(model.Z)
 Z = model.Z
 ZZT = torch.matmul(Z, Z.t())

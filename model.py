@@ -5,7 +5,7 @@ import os
 import numpy as np
 
 import args
-
+#device = torch.device("cuda:0" if torch.cuda.is_available() else "CPU")
 class VGAE(nn.Module):
 	def __init__(self, adj):
 		#adj->归一化的邻接矩阵
@@ -74,7 +74,7 @@ class GraphConvSparse(nn.Module):
 def dot_product_decode(Z):
 	#torch.matmul高维数据矩阵乘
 	#z维度为n x hid2 z*z.T为n x n
-	A_pred = torch.sigmoid(torch.matmul(Z,Z.t()))
+	A_pred = torch.sigmoid(torch.matmul(Z,Z.T))
 	#返回矩阵
 	return A_pred
 
@@ -99,7 +99,7 @@ class GAE(nn.Module):
 		self.base_gcn = GraphConvSparse(args.input_dim, args.hidden1_dim, adj, activation=lambda x:x)
 		#gcn_mean = GraphConvSparse(32,16,adj)
 		self.gcn_mean = GraphConvSparse(args.hidden1_dim, args.hidden2_dim, adj, activation=lambda x:x)
-		self.gcn_out = GraphConvSparse(args.input_dim,args.num,adj, activation=torch.sigmoid)
+		self.gcn_out = GraphConvSparse(args.hidden2_dim,args.num,adj, activation=torch.sigmoid)
 		#使用GCN作为解码器
 		#self.gcn_meanT = GraphConvSparse(args.hidden2_dim, args.hidden1_dim, adj, activation=torch.sigmoid)
 		#self.base_gcnT = GraphConvSparse(args.hidden1_dim)
@@ -115,9 +115,11 @@ class GAE(nn.Module):
 		return z
 
 	def decode(self, X):
-		A_P = self.gcn_mean.dforward(X)
+		'''A_P = self.gcn_mean.dforward(X)
 		A_P = self.base_gcn.dforward(A_P)
-		A_P = self.gcn_out(A_P)
+		A_P = self.gcn_out(A_P)'''
+		#A_P = dot_product_decode(X)
+		A_P = self.gcn_out(X)
 		return A_P
 	#前向传播
 	def forward(self, X):
