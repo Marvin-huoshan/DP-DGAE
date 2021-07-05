@@ -8,7 +8,7 @@ hidden1_dim = 32
 hidden2_dim = 16
 use_feature = True
 
-num_epoch = 50000
-learning_rate = 0.00001
-delta_1 = 415584
-epsilon = 5 * 2708
+num_epoch = 800000
+learning_rate = 0.000001
+delta_1 = 2560
+epsilon = 1 * 2708

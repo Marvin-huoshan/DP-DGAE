@@ -64,8 +64,8 @@ class GAE(nn.Module):
         # hidden = base_gcn.forward(X)
         # hidden = relu(A * feature * weight<正态>)
         # hidden维度为：n x D
-        hidden = self.base_gcn(X)
-        #hidden = self.gcn_mean(X)
+        #hidden = self.base_gcn(X)
+        hidden = self.gcn_mean(X)
         # z的维度为n x hidden2_dim
         #z = self.mean = self.gcn_mean(hidden)
         return hidden
@@ -74,8 +74,8 @@ class GAE(nn.Module):
         '''A_P = self.gcn_mean.dforward(X)
         A_P = self.base_gcn.dforward(A_P)
         A_P = self.gcn_out(A_P)'''
-        A_P = self.base_gcn.dforward(X)
-        #A_P = self.gcn_mean.dforward(X)
+        #A_P = self.base_gcn.dforward(X)
+        A_P = self.gcn_mean.dforward(X)
         return A_P
 
     # 前向传播

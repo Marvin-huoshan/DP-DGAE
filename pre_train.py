@@ -82,9 +82,9 @@ adj_norm = torch.sparse.FloatTensor(torch.LongTensor(adj_norm[0].T),
 adj_label = torch.sparse.FloatTensor(torch.LongTensor(adj_label[0].T),
                             torch.FloatTensor(adj_label[1]),
                             torch.Size(adj_label[2]))
-features = torch.sparse.FloatTensor(torch.LongTensor(features[0].T),
-                            torch.FloatTensor(features[1]),
-                            torch.Size(features[2]))
+#features = torch.sparse.FloatTensor(torch.LongTensor(features[0].T),
+                            #torch.FloatTensor(features[1]),
+                            #torch.Size(features[2]))
 #to_dense()->转化为稠密矩阵形式
 #.view()将张量转化为一维向量形式
 #=1的位置为True，做一张Mask tensor
@@ -105,7 +105,7 @@ model = model.cuda()
 
 #使用Adam优化器，参数为model.parammeters(),learning_rate
 optimizer = Adam(model.parameters(), lr=pre_args.learning_rate)
-scheduler1 = lr_scheduler.StepLR(optimizer,step_size=10000,gamma=0.5)
+scheduler1 = lr_scheduler.StepLR(optimizer,step_size=50000,gamma=0.9)
 
 #validation_edges and validation_edges_false vs A_pred
 def get_scores(edges_pos, edges_neg, adj_rec):
@@ -182,10 +182,10 @@ def torch_2(features):
     features = features / 10
     return features
 
-#with open('pre_weight/hidden_1.pk','rb') as file_to_read:
-    #features = pickle.load(file_to_read)
+with open('pre_weight/hidden_1_noise.pk','rb') as file_to_read:
+    features = pickle.load(file_to_read)
 
-#features = features.clone().detach()
+features = features.clone().detach()
 
 #Laplace noise
 noise = torch.distributions.Laplace(
@@ -196,7 +196,8 @@ noise3 = torch.distributions.Laplace(
     torch.tensor([1.0]),
     torch.tensor([pre_args.delta_1/pre_args.epsilon]),
 )
-features_tensor = features.to_dense().view(-1)
+#features_tensor = features.to_dense().view(-1)
+features_tensor = features.view(-1)
 '''sample1 = noise.sample(sample_shape=features_tensor.shape)
 sample1 = torch.reshape(sample1,features_tensor.shape)'''
 sample1 = torch.full(features_tensor.shape,-1.0)
@@ -217,7 +218,7 @@ while torch.mean(sample2) < 0:
 sample3 = torch.reshape(sample3,features_tensor.shape)'''
 sample3 = torch.full(features_tensor.shape,-1.0)
 while torch.mean(sample3) < 0:
-    sample3 = noise3.sample(sample_shape=features_tensor.shape)
+    sample3 = noise.sample(sample_shape=features_tensor.shape)
     sample3 = torch.reshape(sample3,features_tensor.shape)
     print(torch.mean(sample3))
 print(torch.mean(sample1))
@@ -232,7 +233,9 @@ Loss = Loss.cuda()
 #print(sample1)
 # train model
 #开始训练
-features = data_normal_2d(features.to_dense())
+#features = data_normal_2d(features.to_dense())
+features = features.cpu()
+features = data_normal_2d(features)
 #features = features.to_dense()
 features = features.cuda()
 acc_history = []
@@ -281,8 +284,9 @@ for epoch in range(pre_args.num_epoch):
           "train_acc=", "{:.5f}".format(train_acc), "val_roc=", "{:.5f}".format(val_roc),
           "val_ap=", "{:.5f}".format(val_ap),
           "time=", "{:.5f}".format(time.time() - t))
-torch.save(obj=model.base_gcn.weight, f = 'pre_weight/base_gcn_noise.pth')
-with open('pre_weight/hidden_1_noise.pk','wb') as file_to_write:
+#torch.save(obj=model.base_gcn.weight, f = 'pre_weight/base_gcn_noise.pth')
+torch.save(obj=model.gcn_mean.weight, f = 'pre_weight/gcn_mean.pth')
+with open('pre_weight/hidden_2.pk','wb') as file_to_write:
     pickle.dump(model.hidden,file_to_write)
 
 #test_roc, test_ap = get_scores(test_edges, test_edges_false, A_pred)
@@ -306,7 +310,7 @@ def plot_loss_with_acc(loss_history,Floss_history,Loss_history,acc_history):
     ax2.set_xlabel('epoch')
     ax2.set_ylabel('ACC')
     ax2.legend(fontsize = 'large', loc = 'upper right')
-    plt.savefig('Loss_&_ACC.png')
+    plt.savefig('Loss_&_ACC_H2_1_0_with.png')
 
 
 plot_loss_with_acc(AP_loss.loss_history,AP_loss.Floss_history,AP_loss.Loss_history,acc_history)

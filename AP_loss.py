@@ -26,22 +26,22 @@ class GAE_Loss(nn.Module):
         Coefficient3 = Coefficient3 + sample3
         #print('Co3:', torch.mean(Coefficient3))
         part3 = torch.mul(Coefficient3,torch.pow(z,2))
-        print('part3:',torch.mean(part3))
+        #print('part3:',torch.mean(part3))
         result = part1 + part2 + part3
-        #print('part1,mean:',torch.mean(part1))
-        #print('part2,mean:',torch.mean(part2))
-        #print('part3,mean:',torch.mean(part3))
+        #print('Coefficient1,mean:',torch.mean(Coefficient1))
+        #print('Coefficient2,mean:',torch.mean(Coefficient2))
+        #print('Coefficient3,mean:',torch.mean(Coefficient3))
         loss = torch.mean(result)
         loss_history.append(loss.item())
-        #print(loss / )
-        #ABC = - torch.mean(torch.mul(x,torch.log(torch.sigmoid(z))) + torch.mul((1 - x),torch.log(1 - torch.sigmoid(z))))
-        #print(ABC)
+        print(loss)
+        ABC = - torch.mean(torch.mul(x,torch.log(torch.sigmoid(z))) + torch.mul((1 - x),torch.log(1 - torch.sigmoid(z))))
         Floss = F.binary_cross_entropy(torch.sigmoid(z), x)
         Floss_history.append(Floss.item())
-        print(loss)
-        loss = (loss * 0.3 + Floss * 0.7)
+        #loss = (loss * 0.05 + Floss * 0.95 )
+        #loss = Floss
         Loss_history.append(loss.item())
         print(Floss)
+        #loss = Floss
         #print('Floss:',Floss)
         #print('Floss:',Floss)
-        return loss
+        return ABC
