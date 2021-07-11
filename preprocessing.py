@@ -11,6 +11,8 @@ import numpy as np
 import scipy.sparse as sp
 import torch
 
+import args
+
 
 def sparse_to_tuple(sparse_mx):
     if not sp.isspmatrix_coo(sparse_mx):
@@ -149,12 +151,32 @@ def mask_test_edges(adj):
     # NOTE: these edge lists only contain single direction of edge!
     return adj_train, train_edges, val_edges, val_edges_false, test_edges, test_edges_false
 
-def data_normal_2d(orign_data):
+def GPU_data_normal_2d(orign_data):
     '''
     normalization
     :param orign_data:
     :return:
     '''
+    orign_data = orign_data.reshape(args.num,-1)
+    dim = 0
+    d_min = torch.min(orign_data,dim=dim)[0]
+    d_max = torch.max(orign_data,dim=dim)[0]
+    dst = d_max - d_min
+    d_one = torch.ones(dst.shape).cuda()
+    dst = torch.where(dst != 0,dst,d_one)
+    d_min = d_min.expand(orign_data.shape[0],orign_data.shape[1])
+    dst = dst.expand(orign_data.shape[0],orign_data.shape[1])
+    sq = math.sqrt(orign_data.shape[0])
+    normal_data = (orign_data - d_min) / (dst * sq)
+    return normal_data
+
+def CPU_data_normal_2d(orign_data):
+    '''
+    normalization
+    :param orign_data:
+    :return:
+    '''
+    orign_data = orign_data.reshape(args.num,-1)
     dim = 0
     d_min = torch.min(orign_data,dim=dim)[0]
     d_max = torch.max(orign_data,dim=dim)[0]

@@ -6,15 +6,18 @@ import scipy.sparse as sp
 import numpy as np
 import os
 import time
+from torch.optim import lr_scheduler
 
+import soft_max_Loss
 from input_data import load_data
 from preprocessing import *
 import args
 import model
+import matplotlib.pyplot as plt
 
 # Train on CPU (hide GPU) due to memory constraints
 #由于内存限制，使用CPU进行训练
-os.environ['CUDA_VISIBLE_DEVICES'] = ""
+os.environ['CUDA_VISIBLE_DEVICES'] = "1"
 
 #获得数据集的邻接矩阵与特征矩阵
 adj, features = load_data(args.dataset)
@@ -90,13 +93,19 @@ features = torch.sparse.FloatTensor(torch.LongTensor(features[0].T),
 weight_mask = adj_label.to_dense().view(-1) == 1
 weight_tensor = torch.ones(weight_mask.size(0))
 weight_tensor[weight_mask] = pos_weight
+weight_tensor = weight_tensor.cuda()
+
 
 # init model and optimizer
 #getattr() 函数用于返回一个对象属性值。
 #model.GAE(adj_norm)
+print(torch.cuda.is_available())
+adj_norm = adj_norm.cuda()
 model = getattr(model,args.model)(adj_norm)
+model = model.cuda()
 #使用Adam优化器，参数为model.parammeters(),learning_rate
 optimizer = Adam(model.parameters(), lr=args.learning_rate)
+scheduler1 = lr_scheduler.StepLR(optimizer,step_size=200000,gamma=0.8)
 
 #validation_edges and validation_edges_false vs A_pred
 def get_scores(edges_pos, edges_neg, adj_rec):
@@ -153,8 +162,53 @@ def get_acc(adj_rec, adj_label):
     accuracy = (preds_all == labels_all).sum().float() / labels_all.size(0)
     return accuracy
 
+def torch_2(features):
+    '''
+    feature Retain two decimal places
+    :param features:
+    :return:
+    '''
+    features = features * 10
+    frac = torch.frac(features)
+    frac_round = torch.round(frac)
+    features = torch.trunc(features)
+    features = features + frac_round
+    features = features / 10
+    return features
+
+noise = torch.distributions.Laplace(
+    torch.tensor([0.0]),
+    torch.tensor([args.delta/args.epsilon]),
+)
+#features = features.to_dense()
+adj_tensor = adj_label.to_dense().view(-1)
+sample2 = torch.full(adj_tensor.shape,-1.0)
+while torch.mean(sample2) < 0:
+    sample2 = noise.sample(sample_shape=adj_tensor.shape)
+    sample2 = torch.reshape(sample2,adj_tensor.shape)
+    print(torch.mean(sample2))
+#noise3
+'''sample3 = noise.sample(sample_shape=features_tensor.shape)
+sample3 = torch.reshape(sample3,features_tensor.shape)'''
+sample3 = torch.full(adj_tensor.shape,-1.0)
+while torch.mean(sample3) < 0:
+    sample3 = noise.sample(sample_shape=adj_tensor.shape)
+    sample3 = torch.reshape(sample3,adj_tensor.shape)
+    print(torch.mean(sample3))
+
+sample2 = sample2.cuda()
+sample3 = sample3.cuda()
+Loss = soft_max_Loss.GAE_Loss()
+Loss = Loss.cuda()
+features = CPU_data_normal_2d(features.to_dense())
+features = features.cuda()
+adj_label = adj_label.cuda()
+acc_history = []
+roc_history = []
+ap_history = []
 # train model
 #开始训练
+
 for epoch in range(args.num_epoch):
     t = time.time()
     #feature -> 稀疏张量，张量形式的特征矩阵
@@ -166,7 +220,8 @@ for epoch in range(args.num_epoch):
     #norm = (n * n) / [(n * n - num(edges)) * 2]
     #使用交叉熵->F.binary_cross_entropy([预测值的预测一维表示]，[A+I的一维表示])
     #在原本有边的地方，设置更高的权重（>1），原本无边的地方设置权重为1,更加注重对于原始边的学习
-    loss = log_lik = norm*F.binary_cross_entropy(A_pred.view(-1), adj_label.to_dense().view(-1), weight = weight_tensor)
+    #loss = log_lik = norm*F.binary_cross_entropy(A_pred.view(-1), adj_label.to_dense().view(-1), weight = weight_tensor)
+    loss = log_lik = Loss(A_pred.view(-1), adj_label.to_dense().view(-1), sample2, sample3, weight_tensor)
     if args.model == 'VGAE':
         #kl_divergence = 1/2n * (1 + 2*logstd - mean^2 - [e^logstd]^2)
         #logstd->[n x 16]
@@ -180,12 +235,18 @@ for epoch in range(args.num_epoch):
     loss.backward()
     #梯度下降
     optimizer.step()
+    print('epoch %d learning rate: %f' % (epoch, optimizer.param_groups[0]['lr']))
+    scheduler1.step()
     #计算ACC
     train_acc = get_acc(A_pred,adj_label)
+    acc_history.append(train_acc.item())
     #validation_edges and validation_edges_false vs A_pred
     #在训练过程中使用validation; validation的主要作用是来验证是否过拟合、以及用来调节训练参数等
     #边训练边看到训练的结果，及时判断学习状态
+    A_pred = A_pred.cpu()
     val_roc, val_ap = get_scores(val_edges, val_edges_false, A_pred)
+    roc_history.append(val_roc.item())
+    ap_history.append(val_ap.item())
     print("Epoch:", '%04d' % (epoch + 1), "train_loss=", "{:.5f}".format(loss.item()),
           "train_acc=", "{:.5f}".format(train_acc), "val_roc=", "{:.5f}".format(val_roc),
           "val_ap=", "{:.5f}".format(val_ap),
@@ -195,6 +256,28 @@ for epoch in range(args.num_epoch):
 test_roc, test_ap = get_scores(test_edges, test_edges_false, A_pred)
 print("End of training!", "test_roc=", "{:.5f}".format(test_roc),
       "test_ap=", "{:.5f}".format(test_ap))
+
+def plot_loss_with_acc(loss_history,Floss_history,Loss_history,acc_history,roc_history,ap_history):
+    fig = plt.figure(figsize=(18, 10))
+    ax1 = fig.add_subplot(121)
+    plot1 = plt.plot(range(len(loss_history)),loss_history,c = 'b',label = 'AP_loss')
+    plot2 = plt.plot(range(len(Floss_history)),Floss_history,c = 'r',label = 'F_loss')
+    plot3 = plt.plot(range(len(Loss_history)),Loss_history,c = 'g',label = 'Loss')
+    ax1.legend(fontsize = 'large', loc = 'lower left')
+    ax1.set_title('different loss')
+    ax1.set_xlabel('epoch')
+    ax1.set_ylabel('loss')
+    ax2 = plt.subplot(122)
+    plot4 = plt.plot(range(len(acc_history)),acc_history,c = 'y',label = 'ACC')
+    plot5 = plt.plot(range(len(roc_history)),roc_history,c = 'b',label = 'ROC')
+    plot6 = plt.plot(range(len(ap_history)),ap_history,c = 'r',label = 'AP')
+    ax2.set_title('ACC')
+    ax2.set_xlabel('epoch')
+    ax2.set_ylabel('percent')
+    ax2.legend(fontsize = 'large', loc = 'upper right')
+    plt.savefig('Loss_&_ACC_H3_9_1.png')
+
+plot_loss_with_acc(soft_max_Loss.loss_history,soft_max_Loss.Floss_history,soft_max_Loss.Loss_history,acc_history,roc_history,ap_history)
 
 '''print(model.Z)
 Z = model.Z
