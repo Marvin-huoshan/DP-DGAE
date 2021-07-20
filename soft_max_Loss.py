@@ -10,7 +10,7 @@ class GAE_Loss(nn.Module):
     def __init__(self):
         super(GAE_Loss, self).__init__()
         return
-    def forward(self, z, x, sample2, sample3, weight_tensor):
+    def forward(self, z, x, sample2, sample3, weight_tensor, num):
 
         Coefficient1 = torch.full((x.shape), np.log(2),device='cuda')
         #add noise to Coefficient1
@@ -39,7 +39,10 @@ class GAE_Loss(nn.Module):
         Floss = F.binary_cross_entropy(torch.sigmoid(z), x, weight = weight_tensor)
         #Floss = F.binary_cross_entropy(torch.sigmoid(z), x)
         Floss_history.append(Floss.item())
-        loss = (loss * 0.9 + Floss * 0.1 )
+        if num < 2000000:
+            loss = (loss * 0.025 + Floss * 0.975 )
+        else:
+            loss = loss
         #loss = Floss
         #Loss_history.append(loss.item())
         print(Floss)
