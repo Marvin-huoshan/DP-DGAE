@@ -221,7 +221,7 @@ for epoch in range(args.num_epoch):
     #使用交叉熵->F.binary_cross_entropy([预测值的预测一维表示]，[A+I的一维表示])
     #在原本有边的地方，设置更高的权重（>1），原本无边的地方设置权重为1,更加注重对于原始边的学习
     #loss = log_lik = norm*F.binary_cross_entropy(A_pred.view(-1), adj_label.to_dense().view(-1), weight = weight_tensor)
-    loss = log_lik = Loss(A_pred.view(-1), adj_label.to_dense().view(-1), sample2, sample3, weight_tensor)
+    loss = log_lik = Loss(A_pred.view(-1), adj_label.to_dense().view(-1), sample2, sample3, weight_tensor, epoch)
     if args.model == 'VGAE':
         #kl_divergence = 1/2n * (1 + 2*logstd - mean^2 - [e^logstd]^2)
         #logstd->[n x 16]
@@ -275,7 +275,7 @@ def plot_loss_with_acc(loss_history,Floss_history,Loss_history,acc_history,roc_h
     ax2.set_xlabel('epoch')
     ax2.set_ylabel('percent')
     ax2.legend(fontsize = 'large', loc = 'upper right')
-    plt.savefig('Loss_&_ACC_H3_9_1.png')
+    plt.savefig('Loss_&_ACC_H3_025_975_1_0_400w.png')
 
 plot_loss_with_acc(soft_max_Loss.loss_history,soft_max_Loss.Floss_history,soft_max_Loss.Loss_history,acc_history,roc_history,ap_history)
 
