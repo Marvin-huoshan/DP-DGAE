@@ -209,6 +209,49 @@ ap_history = []
 # train model
 #开始训练
 
+def MTL(loss, Floss):
+    '''
+    使用多任务学习的多个梯度来决定最终梯度
+    :param loss: 带噪声的损失
+    :param Floss: 原始损失
+    :return:
+    '''
+    #对loss进行反向传播，获取各层的梯度
+    loss.backward(retain_graph = True)
+    out_loss_grad = model.gcn_out.weight.grad
+    mean_loss_grad = model.gcn_mean.weight.grad
+    base_loss_grad = model.base_gcn.weight.grad
+    #将计算图中的梯度清零，准备对第二种loss进行反向传播
+    optimizer.zero_grad()
+    Floss.backward()
+    out_Floss_grad = model.gcn_out.weight.grad
+    mean_Floss_grad = model.gcn_mean.weight.grad
+    base_Floss_grad = model.base_gcn.weight.grad
+    #使用gcn_out层的梯度进行比率计算
+    #solution1：将矩阵按列进行切分，分为多个列向量，列向量之间求得帕累托最优，计算比例
+    theta1 = out_loss_grad
+    theta2 = out_Floss_grad
+    #列向量之间做差
+    part1 = torch.mm((theta2 - theta1).T, theta2)
+    #取主对角线元素
+    part1 = torch.diagonal(part1)
+    part2 = torch.norm(theta1 - theta2, p = 2, dim = 0)
+    #二范数的平方
+    part2.pow(2)
+    alpha = torch.div(part1, part2)
+    min = torch.ones_like(alpha)
+    alpha = torch.where(alpha > 1, min, alpha)
+    min = torch.zeros_like(alpha)
+    alpha = torch.where(alpha < 0, min, alpha)
+    #alpha theta1 & (1 - alpha) theta2
+    #将alpha等维度拓展
+    alpha1 = alpha.repeat(theta1.shape[0], 1)
+    alpha2 = (1 - alpha).repeat(theta1.shape[0], 1)
+    model.gcn_out.weight.grad = torch.mul(alpha1, out_loss_grad) + torch.mul(alpha2, out_Floss_grad)
+    model.gcn_mean.weight.grad = torch.mul(alpha1, mean_loss_grad) + torch.mul(alpha2, mean_Floss_grad)
+    model.base_gcn.weight.grad = torch.mul(alpha1, base_loss_grad) + torch.mul(alpha2, base_Floss_grad)
+
+
 for epoch in range(args.num_epoch):
     t = time.time()
     #feature -> 稀疏张量，张量形式的特征矩阵
@@ -221,7 +264,7 @@ for epoch in range(args.num_epoch):
     #使用交叉熵->F.binary_cross_entropy([预测值的预测一维表示]，[A+I的一维表示])
     #在原本有边的地方，设置更高的权重（>1），原本无边的地方设置权重为1,更加注重对于原始边的学习
     #loss = log_lik = norm*F.binary_cross_entropy(A_pred.view(-1), adj_label.to_dense().view(-1), weight = weight_tensor)
-    loss = log_lik = Loss(A_pred.view(-1), adj_label.to_dense().view(-1), sample2, sample3, weight_tensor, epoch)
+    loss, Floss = log_lik = Loss(A_pred.view(-1), adj_label.to_dense().view(-1), sample2, sample3, weight_tensor, epoch)
     if args.model == 'VGAE':
         #kl_divergence = 1/2n * (1 + 2*logstd - mean^2 - [e^logstd]^2)
         #logstd->[n x 16]
@@ -232,7 +275,8 @@ for epoch in range(args.num_epoch):
         kl_divergence = 1 / A_pred.size(0) * (1 + model.logstd - torch.abs(model.mean) - torch.exp(model.logstd)).sum(1).mean()
         loss -= kl_divergence
     #误差反向传播
-    loss.backward()
+    #loss.backward()
+    MTL(loss, Floss)
     #梯度下降
     optimizer.step()
     print('epoch %d learning rate: %f' % (epoch, optimizer.param_groups[0]['lr']))
@@ -256,6 +300,9 @@ for epoch in range(args.num_epoch):
 test_roc, test_ap = get_scores(test_edges, test_edges_false, A_pred)
 print("End of training!", "test_roc=", "{:.5f}".format(test_roc),
       "test_ap=", "{:.5f}".format(test_ap))
+
+
+
 
 def plot_loss_with_acc(loss_history,Floss_history,Loss_history,acc_history,roc_history,ap_history):
     fig = plt.figure(figsize=(18, 10))
