@@ -34,19 +34,22 @@ class GAE_Loss(nn.Module):
         #print('Coefficient3,mean:',torch.mean(Coefficient3))
         loss = torch.mean(result)
         loss_history.append(loss.item())
-        print(loss)
+        print('loss:', loss)
         ABC = - torch.mean(torch.mul(x,torch.log(torch.sigmoid(z))) + torch.mul((1 - x),torch.log(1 - torch.sigmoid(z))))
+        result2 = - (torch.mul(x,torch.log(torch.sigmoid(z))) + torch.mul((1 - x),torch.log(1 - torch.sigmoid(z))))
         Floss = F.binary_cross_entropy(torch.sigmoid(z), x, weight = weight_tensor)
         #Floss = F.binary_cross_entropy(torch.sigmoid(z), x)
         Floss_history.append(Floss.item())
-        if num < 2000000:
+        Loss = 0.9 * loss + 0.1 * Floss
+        Loss_history.append(Loss.item())
+        '''if num < 2000000:
             loss = (loss * 0.025 + Floss * 0.975 )
         else:
-            loss = loss
+            loss = (loss * 0.975 + Floss * 0.025 )'''
         #loss = Floss
         #Loss_history.append(loss.item())
-        print(Floss)
+        print('Floss:', Floss)
         #loss = Floss
         #print('Floss:',Floss)
         #print('Floss:',Floss)
-        return loss
+        return Loss

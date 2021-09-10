@@ -306,7 +306,7 @@ for epoch in range(args.num_epoch):
     #使用交叉熵->F.binary_cross_entropy([预测值的预测一维表示]，[A+I的一维表示])
     #在原本有边的地方，设置更高的权重（>1），原本无边的地方设置权重为1,更加注重对于原始边的学习
     #loss = log_lik = norm*F.binary_cross_entropy(A_pred.view(-1), adj_label.to_dense().view(-1), weight = weight_tensor)
-    loss, Floss = log_lik = Loss(A_pred.view(-1), adj_label.to_dense().view(-1), sample2, sample3, weight_tensor, epoch)
+    Loss_comb = log_lik = Loss(A_pred.view(-1), adj_label.to_dense().view(-1), sample2, sample3, weight_tensor, epoch)
     if args.model == 'VGAE':
         #kl_divergence = 1/2n * (1 + 2*logstd - mean^2 - [e^logstd]^2)
         #logstd->[n x 16]
@@ -315,11 +315,11 @@ for epoch in range(args.num_epoch):
         #[n x 16]-> [n x 1] -> mean
         #kl_divergence = 0.5/ A_pred.size(0) * (1 + 2*model.logstd - model.mean**2 - torch.exp(model.logstd)**2).sum(1).mean()
         kl_divergence = 1 / A_pred.size(0) * (1 + model.logstd - torch.abs(model.mean) - torch.exp(model.logstd)).sum(1).mean()
-        loss -= kl_divergence
+        Loss_comb -= kl_divergence
     #误差反向传播
-    #loss.backward()
-    MTLoss = Floss
-    MTL(loss, Floss, MTLoss)
+    Loss_comb.backward()
+    #MTLoss = Floss
+    #MTL(loss, Floss, MTLoss)
     #梯度下降
     optimizer.step()
     print('epoch %d learning rate: %f' % (epoch, optimizer.param_groups[0]['lr']))
@@ -336,21 +336,22 @@ for epoch in range(args.num_epoch):
     val_roc, val_ap = get_scores(val_edges, val_edges_false, A_pred)
     roc_history.append(val_roc.item())
     ap_history.append(val_ap.item())
-    print("Epoch:", '%04d' % (epoch + 1), "train_loss=", "{:.5f}".format(MTLoss.item()),
+    print("Epoch:", '%04d' % (epoch + 1), "train_loss=", "{:.5f}".format(Loss_comb.item()),
           "train_acc=", "{:.5f}".format(train_acc), "val_roc=", "{:.5f}".format(val_roc),
           "val_ap=", "{:.5f}".format(val_ap),"adj_all_acc=", "{:.5f}".format(all_acc),
           "time=", "{:.5f}".format(time.time() - t))
 
+torch.save(obj=A_pred, f = 'pred_matrix/A_p_9_1_400w.pth')
 
 test_roc, test_ap = get_scores(test_edges, test_edges_false, A_pred)
-print('Loss_&_ACC_H3_MTL_400w')
+print('Loss_&_ACC_H3_9_1_400w')
 print("End of training!", "test_roc=", "{:.5f}".format(test_roc),
       "test_ap=", "{:.5f}".format(test_ap))
 
-def plot_loss_with_acc(loss_history,Floss_history,Loss_history,acc_history,roc_history,ap_history,all_acc_history):
+def plot_loss_with_acc(loss_history,Floss_history,Loss_history,acc_history,roc_history,ap_history):
     fig = plt.figure(figsize=(18, 10))
     ax1 = fig.add_subplot(121)
-    plot1 = plt.plot(range(len(loss_history)),loss_history,c = 'b',label = 'AP_loss')
+    plot1 = plt.plot(range(len(loss_history)),loss_history,c = 'b',label = 'loss')
     plot2 = plt.plot(range(len(Floss_history)),Floss_history,c = 'r',label = 'F_loss')
     plot3 = plt.plot(range(len(Loss_history)),Loss_history,c = 'g',label = 'Loss')
     ax1.legend(fontsize = 'large', loc = 'lower left')
@@ -361,15 +362,15 @@ def plot_loss_with_acc(loss_history,Floss_history,Loss_history,acc_history,roc_h
     plot4 = plt.plot(range(len(acc_history)),acc_history,c = 'y',label = 'ACC')
     plot5 = plt.plot(range(len(roc_history)),roc_history,c = 'b',label = 'ROC')
     plot6 = plt.plot(range(len(ap_history)),ap_history,c = 'r',label = 'AP')
-    plot7 = plt.plot(range(len(all_acc_history)),all_acc_history,c = 'g',label = 'ALL_ACC')
+    #plot7 = plt.plot(range(len(all_acc_history)),all_acc_history,c = 'g',label = 'ALL_ACC')
     ax2.set_title('ACC')
     ax2.set_xlabel('epoch')
     ax2.set_ylabel('percent')
     ax2.legend(fontsize = 'large', loc = 'lower right')
     #plt.savefig('Loss_&_ACC_H3_025_975_975_025_400w.png')
-    plt.savefig('Loss_&_ACC_H3_MTL_400w.png')
+    plt.savefig('Loss_&_ACC_H3_9_1_400w.png')
 
-plot_loss_with_acc(soft_max_Loss.loss_history,soft_max_Loss.Floss_history,MTLoss_history,acc_history,roc_history,ap_history,all_acc_history)
+plot_loss_with_acc(soft_max_Loss.loss_history,soft_max_Loss.Floss_history,soft_max_Loss.Loss_history,acc_history,roc_history,ap_history)
 
 '''print(model.Z)
 Z = model.Z
