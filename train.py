@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 
 # Train on CPU (hide GPU) due to memory constraints
 #由于内存限制，使用CPU进行训练
-os.environ['CUDA_VISIBLE_DEVICES'] = "0"
+os.environ['CUDA_VISIBLE_DEVICES'] = "1"
 
 #获得数据集的邻接矩阵与特征矩阵
 adj, features = load_data(args.dataset)
@@ -55,6 +55,7 @@ features_nonzero = features[1].shape[0]
 #pos_weight = [n * n - num(edges)] / num(edges)
 #??
 pos_weight = float(adj.shape[0] * adj.shape[0] - adj.sum()) / adj.sum()
+
 #norm = (n * n) / [(n * n - num(edges)) * 2]
 #??
 norm = adj.shape[0] * adj.shape[0] / float((adj.shape[0] * adj.shape[0] - adj.sum()) * 2)
@@ -96,7 +97,8 @@ adj_all = torch.sparse.FloatTensor(torch.LongTensor(adj_all[0].T),
 #相当于adj_label为1处为其加weight,其余地方为1
 weight_mask = adj_label.to_dense().view(-1) == 1
 weight_tensor = torch.ones(weight_mask.size(0))
-weight_tensor[weight_mask] = pos_weight
+weight_tensor = weight_tensor
+weight_tensor[weight_mask] = pos_weight / 100
 weight_tensor = weight_tensor.cuda()
 
 # init model and optimizer
@@ -353,12 +355,12 @@ for epoch in range(args.num_epoch):
           "val_ap=", "{:.5f}".format(val_ap),"adj_all_acc=", "{:.5f}".format(all_acc),
           "time=", "{:.5f}".format(time.time() - t))
 
-torch.save(obj=A_pred, f = 'pre_matrix/A_p_MTL_200_10_uncertain.pth')
+torch.save(obj=A_pred, f = 'pre_matrix/A_p_MTL_200_1_uncertain.pth')
 
 test_roc, test_ap = get_scores(test_edges, test_edges_false, A_pred)
-f = open('log-10-uncertain.txt', 'w')
-
-print('Loss_&_ACC_H3_MTL_200_10_uncertain',file = f)
+f = open('log-1-uncertain.txt', 'w')
+print('1-uncertain')
+print('Loss_&_ACC_H3_MTL_200_1_uncertain',file = f)
 print("End of training!", "test_roc=", "{:.5f}".format(test_roc),
       "test_ap=", "{:.5f}".format(test_ap), file = f)
 f.close()
@@ -383,7 +385,7 @@ def plot_loss_with_acc(loss_history,Floss_history,Loss_history,acc_history,roc_h
     ax2.set_ylabel('percent')
     ax2.legend(fontsize = 'large', loc = 'lower right')
     #plt.savefig('Loss_&_ACC_H3_025_975_975_025_400w.png')
-    plt.savefig('Loss_&_ACC_H3_MTL_200_10_uncertain.png')
+    plt.savefig('Loss_&_ACC_H3_MTL_200_1_uncertain.png')
 
 plot_loss_with_acc(soft_max_Loss.loss_history,soft_max_Loss.Floss_history,MTLoss_history,acc_history,roc_history,ap_history)
 
