@@ -99,7 +99,6 @@ weight_tensor = torch.ones(weight_mask.size(0))
 weight_tensor[weight_mask] = pos_weight
 weight_tensor = weight_tensor.cuda()
 
-
 # init model and optimizer
 #getattr() 函数用于返回一个对象属性值。
 #model.GAE(adj_norm)
@@ -204,6 +203,10 @@ while torch.mean(sample3) < 0:
     sample3 = torch.reshape(sample3,adj_tensor.shape)
     print(torch.mean(sample3))
 
+print('sample2 max:',torch.max(sample2))
+print('sample2 min:',torch.min(sample2))
+print('sample3 max:',torch.max(sample3))
+print('sample3 min:',torch.min(sample3))
 sample2 = sample2.cuda()
 sample3 = sample3.cuda()
 Loss = soft_max_Loss.GAE_Loss()
@@ -261,12 +264,19 @@ def MTL(loss, Floss, MTLoss):
     theta2 = grads['z'].view(-1)
     theta1 = theta1.reshape(1,7333264)
     theta2 = theta2.reshape(1,7333264)
+    print('theta1:',torch.mean(theta1))
+    print(torch.var(theta1))
+    print('theta2:',torch.mean(theta2))
+    print(torch.var(theta2))
+    num = torch.sqrt(torch.var(theta1)/torch.var(theta2))
+    print('num:', num)
+    theta1 = theta1 / num
     #列向量之间做差
     part1 = torch.mm((theta2 - theta1), theta2.T)
     #取主对角线元素
     #part1 = torch.diagonal(part1)
     #part2 = torch.norm(theta1 - theta2, p = 2, dim = 0)
-    part2 = torch.norm(theta1 - theta2, p = 2)
+    part2 = torch.norm(theta1 - theta2)
     #二范数的平方
     part2 = part2.pow(2)
     alpha = torch.div(part1, part2)
@@ -274,9 +284,10 @@ def MTL(loss, Floss, MTLoss):
     alpha = torch.where(alpha > 1, min, alpha)
     min = torch.zeros_like(alpha)
     alpha = torch.where(alpha < 0, min, alpha)
-    alpha1 = alpha
-    alpha2 = 1 - alpha
-    print('alpha1:', alpha1)
+    alpha1 = alpha / num
+    #alpha1 = alpha * num
+    alpha2 = 1 - alpha1
+    print('alpha1:',alpha1)
     optimizer.zero_grad()
     MTLoss = alpha1 * loss + alpha2 * Floss
     MTLoss_history.append(MTLoss.item())
@@ -306,7 +317,7 @@ for epoch in range(args.num_epoch):
     #使用交叉熵->F.binary_cross_entropy([预测值的预测一维表示]，[A+I的一维表示])
     #在原本有边的地方，设置更高的权重（>1），原本无边的地方设置权重为1,更加注重对于原始边的学习
     #loss = log_lik = norm*F.binary_cross_entropy(A_pred.view(-1), adj_label.to_dense().view(-1), weight = weight_tensor)
-    Loss_comb = log_lik = Loss(A_pred.view(-1), adj_label.to_dense().view(-1), sample2, sample3, weight_tensor, epoch)
+    loss,Floss = log_lik = Loss(A_pred.view(-1), adj_label.to_dense().view(-1), sample2, sample3, weight_tensor)
     if args.model == 'VGAE':
         #kl_divergence = 1/2n * (1 + 2*logstd - mean^2 - [e^logstd]^2)
         #logstd->[n x 16]
@@ -315,11 +326,12 @@ for epoch in range(args.num_epoch):
         #[n x 16]-> [n x 1] -> mean
         #kl_divergence = 0.5/ A_pred.size(0) * (1 + 2*model.logstd - model.mean**2 - torch.exp(model.logstd)**2).sum(1).mean()
         kl_divergence = 1 / A_pred.size(0) * (1 + model.logstd - torch.abs(model.mean) - torch.exp(model.logstd)).sum(1).mean()
-        Loss_comb -= kl_divergence
+        loss -= kl_divergence
     #误差反向传播
-    Loss_comb.backward()
-    #MTLoss = Floss
-    #MTL(loss, Floss, MTLoss)
+    #Loss_comb.backward()
+    MTLoss = loss
+    #loss.backward()
+    MTL(loss, Floss, MTLoss)
     #梯度下降
     optimizer.step()
     print('epoch %d learning rate: %f' % (epoch, optimizer.param_groups[0]['lr']))
@@ -331,22 +343,25 @@ for epoch in range(args.num_epoch):
     all_acc_history.append(all_acc.item())
     #validation_edges and validation_edges_false vs A_pred
     #在训练过程中使用validation; validation的主要作用是来验证是否过拟合、以及用来调节训练参数等
-    #边训练边看到训练的结果，及时判断学习状态
+    #边训练边看到训练的结果，及时判断学习状态    print('loss_origin:',loss)
     A_pred = A_pred.cpu()
     val_roc, val_ap = get_scores(val_edges, val_edges_false, A_pred)
     roc_history.append(val_roc.item())
     ap_history.append(val_ap.item())
-    print("Epoch:", '%04d' % (epoch + 1), "train_loss=", "{:.5f}".format(Loss_comb.item()),
+    print("Epoch:", '%04d' % (epoch + 1), "train_loss=", "{:.5f}".format(MTLoss.item()),
           "train_acc=", "{:.5f}".format(train_acc), "val_roc=", "{:.5f}".format(val_roc),
           "val_ap=", "{:.5f}".format(val_ap),"adj_all_acc=", "{:.5f}".format(all_acc),
           "time=", "{:.5f}".format(time.time() - t))
 
-torch.save(obj=A_pred, f = 'pred_matrix/A_p_9_1_400w.pth')
+torch.save(obj=A_pred, f = 'pre_matrix/A_p_MTL_200_10_uncertain.pth')
 
 test_roc, test_ap = get_scores(test_edges, test_edges_false, A_pred)
-print('Loss_&_ACC_H3_9_1_400w')
+f = open('log-10-uncertain.txt', 'w')
+
+print('Loss_&_ACC_H3_MTL_200_10_uncertain',file = f)
 print("End of training!", "test_roc=", "{:.5f}".format(test_roc),
-      "test_ap=", "{:.5f}".format(test_ap))
+      "test_ap=", "{:.5f}".format(test_ap), file = f)
+f.close()
 
 def plot_loss_with_acc(loss_history,Floss_history,Loss_history,acc_history,roc_history,ap_history):
     fig = plt.figure(figsize=(18, 10))
@@ -368,9 +383,9 @@ def plot_loss_with_acc(loss_history,Floss_history,Loss_history,acc_history,roc_h
     ax2.set_ylabel('percent')
     ax2.legend(fontsize = 'large', loc = 'lower right')
     #plt.savefig('Loss_&_ACC_H3_025_975_975_025_400w.png')
-    plt.savefig('Loss_&_ACC_H3_9_1_400w.png')
+    plt.savefig('Loss_&_ACC_H3_MTL_200_10_uncertain.png')
 
-plot_loss_with_acc(soft_max_Loss.loss_history,soft_max_Loss.Floss_history,soft_max_Loss.Loss_history,acc_history,roc_history,ap_history)
+plot_loss_with_acc(soft_max_Loss.loss_history,soft_max_Loss.Floss_history,MTLoss_history,acc_history,roc_history,ap_history)
 
 '''print(model.Z)
 Z = model.Z
