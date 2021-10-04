@@ -106,7 +106,9 @@ class GAE(nn.Module):
 		self.base_gcn = GraphConvSparse(args.input_dim, args.hidden1_dim, adj, 'pre_weight/base_gcn_noise.pth', activation=torch.sigmoid)
 		#gcn_mean = GraphConvSparse(32,16,adj)
 		self.gcn_mean = GraphConvSparse(args.hidden1_dim, args.hidden2_dim, adj, 'pre_weight/gcn_mean.pth',activation=torch.sigmoid)
-		self.gcn_out = GraphConvSparse(args.hidden2_dim,args.num,adj, 'None',activation=torch.sigmoid)
+		self.gcn_out1 = GraphConvSparse(args.hidden2_dim, args.extend1_dim, adj, 'None', activation=torch.sigmoid)
+		self.gcn_out2 = GraphConvSparse(args.extend1_dim, args.extend2_dim, adj, 'None', activation=torch.sigmoid)
+		self.gcn_out = GraphConvSparse(args.extend2_dim, args.num, adj, 'None', activation=torch.sigmoid)
 		#使用GCN作为解码器
 		#self.gcn_meanT = GraphConvSparse(args.hidden2_dim, args.hidden1_dim, adj, activation=torch.sigmoid)
 		#self.base_gcnT = GraphConvSparse(args.hidden1_dim)
@@ -129,7 +131,11 @@ class GAE(nn.Module):
 		A_P = self.base_gcn.dforward(A_P)
 		A_P = self.gcn_out(A_P)'''
 		#A_P = dot_product_decode(X)
-		A_P = self.gcn_out(X)
+		hidden1 = self.gcn_out1(X)
+		hidden1 = GPU_data_normal_2d(hidden1)
+		hidden2 = self.gcn_out2(hidden1)
+		hidden2 = GPU_data_normal_2d(hidden2)
+		A_P = self.gcn_out(hidden2)
 		return A_P
 	#前向传播
 	def forward(self, X):
