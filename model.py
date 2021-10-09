@@ -103,9 +103,9 @@ class GAE(nn.Module):
 	def __init__(self,adj):
 		super(GAE,self).__init__()
 		#base_gcn = GraphConvSparse(1433,32,adj)
-		self.base_gcn = GraphConvSparse(args.input_dim, args.hidden1_dim, adj, 'pre_weight/base_gcn_noise.pth', activation=torch.sigmoid)
+		self.base_gcn = GraphConvSparse(args.input_dim, args.hidden1_dim, adj, 'None', activation=torch.sigmoid)
 		#gcn_mean = GraphConvSparse(32,16,adj)
-		self.gcn_mean = GraphConvSparse(args.hidden1_dim, args.hidden2_dim, adj, 'pre_weight/gcn_mean.pth',activation=torch.sigmoid)
+		self.gcn_mean = GraphConvSparse(args.hidden1_dim, args.hidden2_dim, adj, 'None',activation=torch.sigmoid)
 		self.gcn_out1 = GraphConvSparse(args.hidden2_dim, args.extend1_dim, adj, 'None', activation=torch.sigmoid)
 		self.gcn_out2 = GraphConvSparse(args.extend1_dim, args.extend2_dim, adj, 'None', activation=torch.sigmoid)
 		self.gcn_out = GraphConvSparse(args.extend2_dim, args.num, adj, 'None', activation=torch.sigmoid)

@@ -12,6 +12,7 @@ import scipy.sparse as sp
 import torch
 
 import args
+import pre_args
 
 
 def sparse_to_tuple(sparse_mx):
@@ -127,6 +128,10 @@ def mask_test_edges(adj):
             continue
         if ismember([idx_j, idx_i], val_edges):
             continue
+        if ismember([idx_i, idx_j], test_edges):
+            continue
+        if ismember([idx_j, idx_i], test_edges):
+            continue
         if val_edges_false:
             if ismember([idx_j, idx_i], np.array(val_edges_false)):
                 continue
@@ -157,7 +162,7 @@ def GPU_data_normal_2d(orign_data):
     :param orign_data:
     :return:
     '''
-    orign_data = orign_data.reshape(args.num,-1)
+    orign_data = orign_data.reshape(pre_args.num,-1)
     dim = 0
     d_min = torch.min(orign_data,dim=dim)[0]
     d_max = torch.max(orign_data,dim=dim)[0]
@@ -176,7 +181,7 @@ def CPU_data_normal_2d(orign_data):
     :param orign_data:
     :return:
     '''
-    orign_data = orign_data.reshape(args.num,-1)
+    orign_data = orign_data.reshape(pre_args.num,-1)
     dim = 0
     d_min = torch.min(orign_data,dim=dim)[0]
     d_max = torch.max(orign_data,dim=dim)[0]
@@ -186,5 +191,6 @@ def CPU_data_normal_2d(orign_data):
     d_min = d_min.expand(orign_data.shape[0],orign_data.shape[1])
     dst = dst.expand(orign_data.shape[0],orign_data.shape[1])
     sq = math.sqrt(orign_data.shape[0])
+    #normal_data = (orign_data - d_min) / (dst * sq)
     normal_data = (orign_data - d_min) / (dst * sq)
     return normal_data

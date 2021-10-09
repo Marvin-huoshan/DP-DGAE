@@ -6,11 +6,12 @@ import torch.nn.functional as F
 loss_history = []
 Floss_history = []
 Loss_history = []
+
 class GAE_Loss(nn.Module):
     def __init__(self):
         super(GAE_Loss, self).__init__()
         return
-    def forward(self, z, x, sample2, sample3, weight_tensor, num):
+    def forward(self, z, x, sample2, sample3, weight_tensor):
 
         Coefficient1 = torch.full((x.shape), np.log(2),device='cuda')
         #add noise to Coefficient1
@@ -19,6 +20,10 @@ class GAE_Loss(nn.Module):
         Coefficient2 = (1/2 - x)
         #print('Co2:',torch.mean(Coefficient2))
         Coefficient2 = Coefficient2 + sample2
+        #print('original Co2:',Coefficient2)
+        #Coefficient2 = torch.sigmoid(Coefficient2)
+        #Coefficient2 = Coefficient2 - 0.5
+        #print('Co2:',Coefficient2)
         part2 = torch.mul(Coefficient2, z)
         #print('part2:',torch.mean(part2))
         Coefficient3 = torch.full((x.shape), 1/8,device='cuda')
@@ -28,7 +33,17 @@ class GAE_Loss(nn.Module):
         part3 = torch.mul(Coefficient3,torch.pow(z,2))
         #print('part3:',torch.mean(part3))
         result = part1 + part2 + part3
+        result = result
+        '''w1 = 1 / (2 * (sigma1.pow(2)))
+        w2 = 1 / (2 * (sigma2.pow(2)))
+        print('sg1:',sigma1)
+        print('sg2:',sigma2)
+        print('W1:', w1)
+        print('W2:', w2)'''
         #result = torch.multiply(result,weight_tensor)
+        #print('part1,mean:', torch.mean(part1))
+        #print('part2,mean:', torch.mean(part2))
+        #print('part3,mean:', torch.mean(part3))
         #print('Coefficient1,mean:',torch.mean(Coefficient1))
         #print('Coefficient2,mean:',torch.mean(Coefficient2))
         #print('Coefficient3,mean:',torch.mean(Coefficient3))
@@ -40,16 +55,18 @@ class GAE_Loss(nn.Module):
         Floss = F.binary_cross_entropy(torch.sigmoid(z), x, weight = weight_tensor)
         #Floss = F.binary_cross_entropy(torch.sigmoid(z), x)
         Floss_history.append(Floss.item())
-        Loss = 0.9 * loss + 0.1 * Floss
-        Loss_history.append(Loss.item())
-        '''if num < 2000000:
-            loss = (loss * 0.025 + Floss * 0.975 )
+        #Loss = 0.9 * loss + 0.1 * Floss
+        #Loss = w1 * loss + w2 * Floss + torch.log(sigma1 * sigma2)
+        '''if num < 1000000:
+            Loss = (loss * 0.8 + Floss * 0.2 )
         else:
-            loss = (loss * 0.975 + Floss * 0.025 )'''
+            Loss = (loss * 0.2 + Floss * 0.8 )'''
+        #Loss = Floss
+        #Loss_history.append(Loss.item())
         #loss = Floss
         #Loss_history.append(loss.item())
         print('Floss:', Floss)
         #loss = Floss
         #print('Floss:',Floss)
         #print('Floss:',Floss)
-        return Loss
+        return loss,Floss

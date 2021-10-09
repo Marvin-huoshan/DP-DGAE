@@ -9,7 +9,7 @@ import time
 from torch.optim import lr_scheduler
 
 import soft_max_Loss
-from input_data import load_data
+from data.data_struct import load_data
 from preprocessing import *
 import args
 import model
@@ -17,10 +17,11 @@ import matplotlib.pyplot as plt
 
 # Train on CPU (hide GPU) due to memory constraints
 #由于内存限制，使用CPU进行训练
-os.environ['CUDA_VISIBLE_DEVICES'] = "0"
-
+os.environ['CUDA_VISIBLE_DEVICES'] = "1"
+edge_file = 'data/facebook/107.edges'
+feature_file = 'data/facebook/107.feat'
 #获得数据集的邻接矩阵与特征矩阵
-adj, features = load_data(args.dataset)
+adj, features = load_data(edge_file, feature_file)
 
 # Store original adjacency matrix (without diagonal entries) for later
 #存储原始的邻接矩阵（排除对角线）
@@ -31,8 +32,11 @@ adj_orig = adj_orig - sp.dia_matrix((adj_orig.diagonal()[np.newaxis, :], [0]), s
 adj_all = adj_orig
 adj_orig.eliminate_zeros()
 
+
+print('part the dataset......')
 #将数据集进行划分，test、validation、train、False
 adj_train, train_edges, val_edges, val_edges_false, test_edges, test_edges_false = mask_test_edges(adj)
+
 adj = adj_train
 
 # Some preprocessing
@@ -51,6 +55,7 @@ num_features = features[2][1]
 #特征非零值的数量
 features_nonzero = features[1].shape[0]
 
+
 # Create Model
 #pos_weight = [n * n - num(edges)] / num(edges)
 #??
@@ -61,7 +66,8 @@ pos_weight = float(adj.shape[0] * adj.shape[0] - adj.sum()) / adj.sum()
 norm = adj.shape[0] * adj.shape[0] / float((adj.shape[0] * adj.shape[0] - adj.sum()) * 2)
 
 #sp.eye->生成n * n全为1的对角阵
-adj_label = adj_train + sp.eye(adj_train.shape[0])
+#adj_label = adj_train + sp.eye(adj_train.shape[0])
+adj_label = adj_train
 adj_label = sparse_to_tuple(adj_label)
 adj_all = sparse_to_tuple(adj_all)
 
@@ -95,15 +101,15 @@ adj_all = torch.sparse.FloatTensor(torch.LongTensor(adj_all[0].T),
 #adj_label -> adj_train + I
 #weight_mask中为1处为adj_label为1处
 #相当于adj_label为1处为其加weight,其余地方为1
-print(pos_weight)
+print('pos_weight:', pos_weight)
 weight_mask = adj_label.to_dense().view(-1) == 1
 weight_tensor = torch.ones(weight_mask.size(0))
-weight_tensor = weight_tensor * 40
+weight_tensor = weight_tensor
 weight_tensor[weight_mask] = pos_weight
 weight_tensor = weight_tensor.cuda()
 
 # init model and optimizer
-#getattr() 函数用于返回一个对象属性值。
+#getattr() 函数用于返回一个对象from data.data_struct import load_data属性值。
 #model.GAE(adj_norm)
 print(torch.cuda.is_available())
 adj_norm = adj_norm.cuda()
@@ -111,7 +117,7 @@ model = getattr(model,args.model)(adj_norm)
 model = model.cuda()
 #使用Adam优化器，参数为model.parammeters(),learning_rate
 optimizer = Adam(model.parameters(), lr=args.learning_rate)
-scheduler1 = lr_scheduler.StepLR(optimizer,step_size=2000,gamma=0.8)
+scheduler1 = lr_scheduler.StepLR(optimizer,step_size=20000,gamma=0.5)
 
 #validation_edges and validation_edges_false vs A_pred
 def get_scores(edges_pos, edges_neg, adj_rec):
@@ -259,8 +265,8 @@ def MTL(loss, Floss, MTLoss):
     optimizer.zero_grad()
     Floss.backward(retain_graph = True)
     theta2 = grads['z'].view(-1)
-    theta1 = theta1.reshape(1,7333264)
-    theta2 = theta2.reshape(1,7333264)
+    theta1 = theta1.reshape(1,1069156)
+    theta2 = theta2.reshape(1,1069156)
     print('theta1:',torch.mean(theta1))
     print(torch.var(theta1))
     print('theta2:',torch.mean(theta2))
@@ -268,6 +274,7 @@ def MTL(loss, Floss, MTLoss):
     num = torch.sqrt(torch.var(theta1)/torch.var(theta2))
     #num2 = torch.mean(theta1) / torch.mean(theta2)
     #num = num1 * num2
+    num = torch.sqrt(num)
     print('num:', num)
     #theta1 = theta1 / num
     theta1 = theta1
@@ -285,8 +292,8 @@ def MTL(loss, Floss, MTLoss):
     min = torch.zeros_like(alpha)
     alpha = torch.where(alpha < 0, min, alpha)
     #alpha1 = alpha / num
-    #alpha1 = alpha * num
-    alpha1 = alpha
+    alpha1 = alpha * num
+    #alpha1 = alpha
     alpha2 = 1 - alpha1
     print('alpha1:',alpha1)
     optimizer.zero_grad()
@@ -354,37 +361,41 @@ for epoch in range(args.num_epoch):
           "val_ap=", "{:.5f}".format(val_ap),"adj_all_acc=", "{:.5f}".format(all_acc),
           "time=", "{:.5f}".format(time.time() - t))
 
-torch.save(obj=A_pred, f = 'pre_matrix/A_p_MTL_test.pth')
+torch.save(obj=A_pred, f = 'pre_matrix/A_p_MTL_10_SSD.pth')
 
 test_roc, test_ap = get_scores(test_edges, test_edges_false, A_pred)
-f = open('log-test.txt', 'w')
-print('1-test_H0')
-print('Loss_&_ACC_H3_MTL_test',file = f)
+f = open('log/log-MTL_10_SSD.txt', 'w')
+print('MTL_10_SSD')
+print('Loss_&_ACC_H3_MTL_10_SSD',file = f)
 print("End of training!", "test_roc=", "{:.5f}".format(test_roc),
       "test_ap=", "{:.5f}".format(test_ap), file = f)
 f.close()
 
 def plot_loss_with_acc(loss_history,Floss_history,Loss_history,acc_history,roc_history,ap_history):
     fig = plt.figure(figsize=(18, 10))
-    ax1 = fig.add_subplot(121)
+    ax1 = fig.add_subplot(131)
     plot1 = plt.plot(range(len(loss_history)),loss_history,c = 'b',label = 'loss')
-    plot2 = plt.plot(range(len(Floss_history)),Floss_history,c = 'r',label = 'F_loss')
-    plot3 = plt.plot(range(len(Loss_history)),Loss_history,c = 'g',label = 'Loss')
     ax1.legend(fontsize = 'large', loc = 'lower left')
-    ax1.set_title('different loss')
+    ax1.set_title('loss')
     ax1.set_xlabel('epoch')
     ax1.set_ylabel('loss')
-    ax2 = plt.subplot(122)
+    ax2 = plt.subplot(132)
+    plot2 = plt.plot(range(len(Floss_history)), Floss_history, c='r', label='F_loss')
+    ax2.legend(fontsize='large', loc='lower left')
+    ax2.set_title('F_loss')
+    ax2.set_xlabel('epoch')
+    ax2.set_ylabel('loss')
+    ax4 = plt.subplot(133)
     plot4 = plt.plot(range(len(acc_history)),acc_history,c = 'y',label = 'ACC')
     plot5 = plt.plot(range(len(roc_history)),roc_history,c = 'b',label = 'ROC')
     plot6 = plt.plot(range(len(ap_history)),ap_history,c = 'r',label = 'AP')
     #plot7 = plt.plot(range(len(all_acc_history)),all_acc_history,c = 'g',label = 'ALL_ACC')
-    ax2.set_title('ACC')
-    ax2.set_xlabel('epoch')
-    ax2.set_ylabel('percent')
-    ax2.legend(fontsize = 'large', loc = 'lower right')
+    ax4.set_title('ACC')
+    ax4.set_xlabel('epoch')
+    ax4.set_ylabel('percent')
+    ax4.legend(fontsize = 'large', loc = 'lower right')
     #plt.savefig('Loss_&_ACC_H3_025_975_975_025_400w.png')
-    plt.savefig('Loss_&_ACC_H3_MTL_test.png')
+    plt.savefig('Loss_&_ACC_H3_MTL_10_SSD.png')
 
 plot_loss_with_acc(soft_max_Loss.loss_history,soft_max_Loss.Floss_history,MTLoss_history,acc_history,roc_history,ap_history)
 
