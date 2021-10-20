@@ -93,7 +93,6 @@ def glorot_init(input_dim, output_dim):
 	init_range = np.sqrt(6.0/(input_dim + output_dim))
 	#torch.rand(input_dim,output_dim) -> 从[0,1)正态分布抽样，初始化一个(input_dim * output_dim)的矩阵
 	#为何inital要如此处理？
-
 	initial = torch.rand(input_dim, output_dim) * 2 * init_range - init_range
 	#nn.Parameter将一个张量注册为可训练参数
 	return nn.Parameter(initial)
@@ -103,11 +102,15 @@ class GAE(nn.Module):
 	def __init__(self,adj):
 		super(GAE,self).__init__()
 		#base_gcn = GraphConvSparse(1433,32,adj)
-		self.base_gcn = GraphConvSparse(args.input_dim, args.hidden1_dim, adj, 'None', activation=torch.sigmoid)
-		#gcn_mean = GraphConvSparse(32,16,adj)
+		'''self.base_gcn = GraphConvSparse(args.input_dim, args.hidden1_dim, adj, 'None', activation=torch.sigmoid)
 		self.gcn_mean = GraphConvSparse(args.hidden1_dim, args.hidden2_dim, adj, 'None',activation=torch.sigmoid)
 		self.gcn_out1 = GraphConvSparse(args.hidden2_dim, args.extend1_dim, adj, 'None', activation=torch.sigmoid)
 		self.gcn_out2 = GraphConvSparse(args.extend1_dim, args.extend2_dim, adj, 'None', activation=torch.sigmoid)
+		self.gcn_out = GraphConvSparse(args.extend2_dim, args.num, adj, 'None', activation=torch.sigmoid)'''
+		self.base_gcn = GraphConvSparse(args.input_dim, args.hidden1_dim, adj, 'None', activation=F.leaky_relu)
+		self.gcn_mean = GraphConvSparse(args.hidden1_dim, args.hidden2_dim, adj, 'None', activation=F.leaky_relu)
+		self.gcn_out1 = GraphConvSparse(args.hidden2_dim, args.extend2_dim, adj, 'None', activation=F.leaky_relu)
+		#self.gcn_out2 = GraphConvSparse(args.extend1_dim, args.extend2_dim, adj, 'None', activation=F.relu)
 		self.gcn_out = GraphConvSparse(args.extend2_dim, args.num, adj, 'None', activation=torch.sigmoid)
 		#使用GCN作为解码器
 		#self.gcn_meanT = GraphConvSparse(args.hidden2_dim, args.hidden1_dim, adj, activation=torch.sigmoid)
@@ -133,9 +136,9 @@ class GAE(nn.Module):
 		#A_P = dot_product_decode(X)
 		hidden1 = self.gcn_out1(X)
 		hidden1 = GPU_data_normal_2d(hidden1)
-		hidden2 = self.gcn_out2(hidden1)
-		hidden2 = GPU_data_normal_2d(hidden2)
-		A_P = self.gcn_out(hidden2)
+		#hidden2 = self.gcn_out2(hidden1)
+		#hidden2 = GPU_data_normal_2d(hidden2)
+		A_P = self.gcn_out(hidden1)
 		return A_P
 	#前向传播
 	def forward(self, X):
@@ -145,6 +148,7 @@ class GAE(nn.Module):
 		#A_pred 为一个n x n矩阵
 		#A_pred = dot_product_decode(Z)
 		A_pred = self.decode(Z)
+		#A_pred = torch.sigmoid(A_pred)
 		#返回预测矩阵
 		return A_pred
 		
