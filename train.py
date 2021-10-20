@@ -116,8 +116,9 @@ adj_norm = adj_norm.cuda()
 model = getattr(model,args.model)(adj_norm)
 model = model.cuda()
 #使用Adam优化器，参数为model.parammeters(),learning_rate
-optimizer = Adam(model.parameters(), lr=args.learning_rate)
-scheduler1 = lr_scheduler.StepLR(optimizer,step_size=20000,gamma=0.5)
+optimizer = Adam(model.parameters(), lr=args.learning_rate, weight_decay=1e-8)
+#optimizer = Adam(model.parameters(), lr=args.learning_rate)
+scheduler1 = lr_scheduler.StepLR(optimizer,step_size=5000,gamma=0.5)
 
 #validation_edges and validation_edges_false vs A_pred
 def get_scores(edges_pos, edges_neg, adj_rec):
@@ -138,7 +139,6 @@ def get_scores(edges_pos, edges_neg, adj_rec):
         preds.append(sigmoid(adj_rec[e[0], e[1]].item()))
         #adj_orig->去除邻接矩阵对角线以及零元素
         pos.append(adj_orig[e[0], e[1]])
-
     preds_neg = []
     neg = []
     # 随机生成的假边（不与原来的边重合）
@@ -172,7 +172,7 @@ def get_acc(adj_rec, adj_label):
         print('no to_dense() attribute')
         labels_all = adj_label.view(-1).long()
     #预测矩阵大于0.5的边置为1，小于0.5为0
-    preds_all = (adj_rec > 0.5).view(-1).long()
+    preds_all = (adj_rec > 0.9).view(-1).long()
     #对应为值相等的数量之和/所有的边数
     #只是有矩阵，并未成图？
     accuracy = (preds_all == labels_all).sum().float() / labels_all.size(0)
@@ -199,10 +199,36 @@ noise = torch.distributions.Laplace(
 #features = features.to_dense()
 adj_tensor = adj_label.to_dense().view(-1)
 sample2 = torch.full(adj_tensor.shape,-1.0)
+Cof3 = torch.full(adj_tensor.shape, 1/8)
 while torch.mean(sample2) < 0:
     sample2 = noise.sample(sample_shape=adj_tensor.shape)
     sample2 = torch.reshape(sample2,adj_tensor.shape)
     print(torch.mean(sample2))
+'''file_noise = 'noise/noise1.pth'
+if file_noise != 'None':
+    sample2 = torch.load(file_noise)'''
+Cof3 = Cof3 + sample2
+
+Coefficient3 = torch.reshape(Cof3,(1034,1034))
+Upper = torch.triu(Coefficient3)
+diag = torch.diag(torch.diag(Coefficient3))
+Coefficient3 = Upper + Upper.T - diag
+(evals,evecs) = torch.eig(Coefficient3,eigenvectors=True)
+evals = torch.index_select(evals,1,index=torch.tensor([0]))
+evals = evals.view(-1)
+smat = torch.diag(evals)
+tmp = torch.zeros_like(evals)
+smat = torch.where(smat < 0, tmp, smat)
+Coefficient3 = torch.mm(evecs, torch.mm(smat, torch.inverse(evecs)))
+Coefficient3 = Coefficient3.view(-1)
+Coefficient3 = Coefficient3.cuda()
+'''Coefficient3 = Coefficient3.numpy()
+Upper = np.triu(Coefficient3, k=0)
+diag = np.diag(np.diag(Coefficient3))
+Coefficient3 = Upper + Upper.T - diag
+print(Coefficient3)
+e_vals,e_vecs = np.linalg.eig(Coefficient3)
+print(evals)'''
 #noise3
 '''sample3 = noise.sample(sample_shape=features_tensor.shape)
 sample3 = torch.reshape(sample3,features_tensor.shape)'''
@@ -269,15 +295,35 @@ def MTL(loss, Floss, MTLoss):
     theta2 = theta2.reshape(1,1069156)
     print('theta1:',torch.mean(theta1))
     print(torch.var(theta1))
+    print(torch.max(theta1))
+    print(torch.min(theta1))
+    '''L2_1 = torch.norm(theta1)
+    print('L2_1:', L2_1)
+    if L2_1 > 1:
+        theta1 = 10 * theta1 / L2_1
+    print('theta1:', torch.mean(theta1))
+    print(torch.var(theta1))
+    print(torch.max(theta1))
+    print(torch.min(theta1))'''
     print('theta2:',torch.mean(theta2))
     print(torch.var(theta2))
+    print(torch.max(theta2))
+    print(torch.min(theta2))
+    L2_2 = torch.norm(theta2)
+    print('L2_2:',L2_2)
+    '''if L2_2 > 1:
+        theta2 = 2 * theta2 / L2_2
+    print('theta2:', torch.mean(theta2))
+    print(torch.var(theta2))
+    print(torch.max(theta2))
+    print(torch.min(theta2))'''
     num = torch.sqrt(torch.var(theta1)/torch.var(theta2))
     #num2 = torch.mean(theta1) / torch.mean(theta2)
     #num = num1 * num2
-    num = torch.sqrt(num)
+    #num = torch.sqrt(num)
     print('num:', num)
-    #theta1 = theta1 / num
-    theta1 = theta1
+    theta1 = theta1 / num
+    #theta1 = theta1
     #列向量之间做差
     part1 = torch.mm((theta2 - theta1), theta2.T)
     #取主对角线元素
@@ -291,10 +337,16 @@ def MTL(loss, Floss, MTLoss):
     alpha = torch.where(alpha > 1, min, alpha)
     min = torch.zeros_like(alpha)
     alpha = torch.where(alpha < 0, min, alpha)
-    #alpha1 = alpha / num
-    alpha1 = alpha * num
+    print('alpha:',alpha)
+    alpha1 = (alpha / num)
     #alpha1 = alpha
+    #alpha1 = alpha * num
+    #alpha1 = 0
+    #alpha1 = 0.5
+    #alpha1 = 1
     alpha2 = 1 - alpha1
+    if alpha2 < 0:
+        alpha2 = 0
     print('alpha1:',alpha1)
     optimizer.zero_grad()
     MTLoss = alpha1 * loss + alpha2 * Floss
@@ -319,13 +371,14 @@ for epoch in range(args.num_epoch):
     #A_pred = model.forward(features)
     #通过解码器获得的预测矩阵
     A_pred = model(features)
+    print('pred_max_10:',torch.max(A_pred))
     #梯度清零
     optimizer.zero_grad()
     #norm = (n * n) / [(n * n - num(edges)) * 2]
     #使用交叉熵->F.binary_cross_entropy([预测值的预测一维表示]，[A+I的一维表示])
     #在原本有边的地方，设置更高的权重（>1），原本无边的地方设置权重为1,更加注重对于原始边的学习
     #loss = log_lik = norm*F.binary_cross_entropy(A_pred.view(-1), adj_label.to_dense().view(-1), weight = weight_tensor)
-    loss,Floss = log_lik = Loss(A_pred.view(-1), adj_label.to_dense().view(-1), sample2, sample3, weight_tensor)
+    loss,Floss = log_lik = Loss(A_pred.view(-1), adj_label.to_dense().view(-1), sample2, Coefficient3, weight_tensor)
     if args.model == 'VGAE':
         #kl_divergence = 1/2n * (1 + 2*logstd - mean^2 - [e^logstd]^2)
         #logstd->[n x 16]
@@ -360,13 +413,13 @@ for epoch in range(args.num_epoch):
           "train_acc=", "{:.5f}".format(train_acc), "val_roc=", "{:.5f}".format(val_roc),
           "val_ap=", "{:.5f}".format(val_ap),"adj_all_acc=", "{:.5f}".format(all_acc),
           "time=", "{:.5f}".format(time.time() - t))
-
-torch.save(obj=A_pred, f = 'pre_matrix/A_p_MTL_10_SSD.pth')
+torch.save(obj=adj_label, f = 'pre_matrix/A_p_MTL_train_10.pth')
+torch.save(obj=A_pred, f = 'pre_matrix/A_p_MTL_10.pth')
 
 test_roc, test_ap = get_scores(test_edges, test_edges_false, A_pred)
-f = open('log/log-MTL_10_SSD.txt', 'w')
-print('MTL_10_SSD')
-print('Loss_&_ACC_H3_MTL_10_SSD',file = f)
+f = open('log/log-MTL_10.txt', 'w')
+print('MTL_10')
+print('Loss_&_ACC_H3_MTL_10',file = f)
 print("End of training!", "test_roc=", "{:.5f}".format(test_roc),
       "test_ap=", "{:.5f}".format(test_ap), file = f)
 f.close()
@@ -395,7 +448,7 @@ def plot_loss_with_acc(loss_history,Floss_history,Loss_history,acc_history,roc_h
     ax4.set_ylabel('percent')
     ax4.legend(fontsize = 'large', loc = 'lower right')
     #plt.savefig('Loss_&_ACC_H3_025_975_975_025_400w.png')
-    plt.savefig('Loss_&_ACC_H3_MTL_10_SSD.png')
+    plt.savefig('Loss_&_ACC_H3_MTL_10.png')
 
 plot_loss_with_acc(soft_max_Loss.loss_history,soft_max_Loss.Floss_history,MTLoss_history,acc_history,roc_history,ap_history)
 

@@ -10,7 +10,7 @@ extend1_dim = 64
 extend2_dim = 256
 use_feature = True
 
-num_epoch = 200000
+num_epoch = 40000
 learning_rate = 0.1
 #delta = 216640
 delta = 17205760
