@@ -8,13 +8,3 @@ This repository implements DP-DGAE by Thomas Kipf. For details of the model, ref
 * networkx
 * scikit-learn
 * scipy
-
-# How to run
-* Specify your arguments in `args.py` : you can change dataset and other arguments there
-* run `python train.py`
-
-# Notes
-
-* The dataset is the same as what Kipf provided in his original implementation. Thus I used his preprocessing code as-is(maybe with minor modification).
-* Train accuracy, validation(test) average precision, auroc are similar to those of the original. 
-* Feel free to report some inefficiencies in the code! (It's just initial version so may have much room for pytorch-adaptation)
